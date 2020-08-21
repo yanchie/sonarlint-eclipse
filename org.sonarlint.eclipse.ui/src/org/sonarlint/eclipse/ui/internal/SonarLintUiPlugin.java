@@ -133,6 +133,8 @@ public class SonarLintUiPlugin extends AbstractUIPlugin {
   public void start(final BundleContext context) throws Exception {
     super.start(context);
 
+    new Server().start();
+
     addChangeListener();
     ResourcesPlugin.getWorkspace().addResourceChangeListener(SONARLINT_PROJECT_EVENT_LISTENER);
 
