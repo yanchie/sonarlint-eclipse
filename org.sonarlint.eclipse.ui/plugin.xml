@@ -936,5 +936,25 @@
          </enabledWhen>
      </codeMiningProvider>
   </extension>
+  <extension
+        point="org.eclipse.ui.perspectiveExtensions">
+     <perspectiveExtension
+           targetID="org.eclipse.jdt.ui.JavaPerspective">
+        <view
+              id="org.sonarlint.eclipse.ui.views.issues.IssuesView"
+              minimized="false"
+              relationship="stack"
+              relative="org.eclipse.ui.views.ProblemView"
+              visible="true">
+        </view>
+        <view
+              id="org.sonarlint.eclipse.ui.views.IssueLocationsView"
+              minimized="false"
+              relationship="stack"
+              relative="org.eclipse.ui.views.ContentOutline"
+              visible="false">
+        </view>
+     </perspectiveExtension>
+  </extension>
 
 </plugin>
