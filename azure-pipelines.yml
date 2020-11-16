@@ -164,21 +164,23 @@ stages:
             SQ_VERSION: 'LATEST_RELEASE[7.9]'
             imageName: 'macOS-latest'
             Category: '-DexcludedGroups=SonarCloud'
+            stagedP2Url: 'file://$(Agent.BuildDirectory)/staged-repository'
           2020_06_and_SonarCloud_Linux:
             TARGET_PLATFORM: '2020-06'
             SQ_VERSION: 'SonarCloud'
             imageName: 'ubuntu-latest'
             Category: '-Dgroups=SonarCloud'
+            stagedP2Url: 'file://$(Agent.BuildDirectory)/staged-repository'
           Milestone_and_SonarQube_Dogfood_Win:
             TARGET_PLATFORM: 'milestones'
             SQ_VERSION: 'DOGFOOD'
             imageName: 'windows-latest'
             # SonarCloud category already excluded in the pom.xml
             Category: ''
+            stagedP2Url: 'file:///$(Agent.BuildDirectory)/staged-repository'
       variables:
         MAVEN_CACHE_FOLDER: $(Pipeline.Workspace)/.m2/repository
         MAVEN_OPTS: '-Xmx3072m -Dmaven.repo.local=$(MAVEN_CACHE_FOLDER)'
-        stagedP2Url: 'file://$(Agent.BuildDirectory)/staged-repository'
       pool:
         vmImage: $(imageName)
       steps:
@@ -228,7 +230,7 @@ stages:
           metacity --sm-disable --replace &
           sleep 10 # give metacity some time to start
         displayName: Setup Xvfb and Metacity
-        condition: ne(variables['imageName'], 'windows-latest')
+        condition: and(succeeded(), not(in(variables['imageName'], 'windows-latest', 'macOS-latest')))
       - task: Maven@3
         displayName: 'Run Maven ITs for Eclipse $(TARGET_PLATFORM) and Server $(SQ_VERSION)'
         env:
