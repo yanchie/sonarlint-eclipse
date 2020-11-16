@@ -159,20 +159,20 @@ stages:
       displayName: Run ITs
       strategy:
         matrix:
-          Photon:
+          Photon_and_SonarQube_LTS_Mac:
             TARGET_PLATFORM: 'photon'
             SQ_VERSION: 'LATEST_RELEASE[7.9]'
-            imageName: 'ubuntu-18.04'
+            imageName: 'macOS-latest'
             Category: '-DexcludedGroups=SonarCloud'
-          2020_06:
+          2020_06_and_SonarCloud_Linux:
             TARGET_PLATFORM: '2020-06'
             SQ_VERSION: 'SonarCloud'
-            imageName: 'ubuntu-18.04'
+            imageName: 'ubuntu-latest'
             Category: '-Dgroups=SonarCloud'
-          Milestone:
+          Milestone_and_SonarQube_Dogfood_Win:
             TARGET_PLATFORM: 'milestones'
             SQ_VERSION: 'DOGFOOD'
-            imageName: 'ubuntu-18.04'
+            imageName: 'windows-latest'
             # SonarCloud category already excluded in the pom.xml
             Category: ''
       variables:
