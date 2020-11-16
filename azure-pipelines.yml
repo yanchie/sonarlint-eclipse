@@ -159,6 +159,12 @@ stages:
       displayName: Run ITs
       strategy:
         matrix:
+          Neon_and_SonarQube_67_Linux:
+            TARGET_PLATFORM: 'neon'
+            SQ_VERSION: 'LATEST_RELEASE[6.7]'
+            imageName: 'ubuntu-latest'
+            Category: '-DexcludedGroups=SonarCloud'
+            stagedP2Url: 'file://$(Agent.BuildDirectory)/staged-repository'
           Photon_and_SonarQube_LTS_Mac:
             TARGET_PLATFORM: 'photon'
             SQ_VERSION: 'LATEST_RELEASE[7.9]'
