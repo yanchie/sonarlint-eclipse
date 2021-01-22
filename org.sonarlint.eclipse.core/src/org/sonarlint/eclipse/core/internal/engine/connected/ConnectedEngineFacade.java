@@ -69,8 +69,8 @@ import org.sonarsource.sonarlint.core.client.api.connected.GlobalStorageStatus;
 import org.sonarsource.sonarlint.core.client.api.connected.ProjectBinding;
 import org.sonarsource.sonarlint.core.client.api.connected.RemoteOrganization;
 import org.sonarsource.sonarlint.core.client.api.connected.RemoteProject;
-import org.sonarsource.sonarlint.core.client.api.connected.ServerConfiguration;
-import org.sonarsource.sonarlint.core.client.api.connected.ServerConfiguration.Builder;
+import org.sonarsource.sonarlint.core.client.api.connected.ConnectionConfiguration;
+import org.sonarsource.sonarlint.core.client.api.connected.ConnectionConfiguration.Builder;
 import org.sonarsource.sonarlint.core.client.api.connected.ServerIssue;
 import org.sonarsource.sonarlint.core.client.api.connected.SonarAnalyzer;
 import org.sonarsource.sonarlint.core.client.api.connected.StateListener;
@@ -79,7 +79,7 @@ import org.sonarsource.sonarlint.core.client.api.connected.ValidationResult;
 import org.sonarsource.sonarlint.core.client.api.connected.WsHelper;
 import org.sonarsource.sonarlint.core.client.api.exceptions.DownloadException;
 import org.sonarsource.sonarlint.core.client.api.util.TextSearchIndex;
-import org.sonarsource.sonarlint.core.notifications.ServerNotifications;
+import org.sonarsource.sonarlint.core.notifications.ServerNotificationsRegistry;
 
 import static java.util.Collections.emptyList;
 import static java.util.Collections.unmodifiableMap;
@@ -505,7 +505,7 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
     return helper.listUserOrganizations(builder.build(), new WrappedProgressMonitor(monitor, "Fetch organizations"));
   }
 
-  public ServerConfiguration getConfig() {
+  public ConnectionConfiguration getConfig() {
     Builder builder = getConfigBuilderNoCredentials(getHost(), getOrganization());
 
     if (hasAuth()) {
@@ -519,7 +519,7 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
   }
 
   private static Builder getConfigBuilderNoCredentials(String url, @Nullable String organization) {
-    Builder builder = ServerConfiguration.builder()
+    Builder builder = ConnectionConfiguration.builder()
       .url(url)
       .organizationKey(organization)
       .userAgent("SonarLint Eclipse " + SonarLintUtils.getPluginVersion());
@@ -534,7 +534,7 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
       builder.credentials(username, password);
     }
 
-    return ServerNotifications.get().isSupported(builder.build());
+    return ServerNotificationsRegistry.get().isSupported(builder.build());
   }
 
   public boolean checkNotificationsSupported() {
@@ -542,7 +542,7 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
       return true;
     }
     try {
-      return ServerNotifications.get().isSupported(getConfig());
+      return ServerNotificationsRegistry.get().isSupported(getConfig());
     } catch (Exception e) {
       // Maybe the server is temporarily unavailable
       SonarLintLogger.get().debug("Unable to check for if notifications are supported for server '" + getHost() + "'", e);
@@ -622,12 +622,12 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
     return this;
   }
 
-  public void downloadServerIssues(String projectKey) {
-    doWithEngine(engine -> engine.downloadServerIssues(getConfig(), projectKey));
+  public void downloadServerIssues(String projectKey, IProgressMonitor monitor) {
+    doWithEngine(engine -> engine.downloadServerIssues(getConfig(), projectKey, new WrappedProgressMonitor(monitor, "Fetch issues")));
   }
 
-  public List<ServerIssue> downloadServerIssues(ProjectBinding projectBinding, String filePath) {
-    return withEngine(engine -> engine.downloadServerIssues(getConfig(), projectBinding, filePath)).orElse(emptyList());
+  public List<ServerIssue> downloadServerIssues(ProjectBinding projectBinding, String filePath, IProgressMonitor monitor) {
+    return withEngine(engine -> engine.downloadServerIssues(getConfig(), projectBinding, filePath, new WrappedProgressMonitor(monitor, "Fetch issues"))).orElse(emptyList());
   }
 
   public List<ServerIssue> getServerIssues(ProjectBinding projectBinding, String filePath) {

@@ -35,7 +35,7 @@ import org.sonarlint.eclipse.core.resource.ISonarLintProject;
 import org.sonarsource.sonarlint.core.client.api.common.NotificationConfiguration;
 import org.sonarsource.sonarlint.core.client.api.notifications.LastNotificationTime;
 import org.sonarsource.sonarlint.core.client.api.notifications.ServerNotificationListener;
-import org.sonarsource.sonarlint.core.notifications.ServerNotifications;
+import org.sonarsource.sonarlint.core.notifications.ServerNotificationsRegistry;
 
 public class NotificationsManager {
 
@@ -148,13 +148,13 @@ public class NotificationsManager {
 
       NotificationConfiguration configuration = new NotificationConfiguration(listener, notificationTime, binding.getProjectBinding().projectKey(),
         connectedEngineFacade::getConfig);
-      ServerNotifications.get().register(configuration);
+      ServerNotificationsRegistry.get().register(configuration);
       return true;
 
     }
 
     public void unsubscribe(ServerNotificationListener listener) {
-      ServerNotifications.get().remove(listener);
+      ServerNotificationsRegistry.get().remove(listener);
     }
   }
 

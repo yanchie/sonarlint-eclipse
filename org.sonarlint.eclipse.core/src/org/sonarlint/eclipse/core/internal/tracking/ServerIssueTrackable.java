@@ -107,8 +107,7 @@ public class ServerIssueTrackable implements Trackable {
 
   @Override
   public String getType() {
-    // FIXME We are not able to get server side issue type
-    throw new UnsupportedOperationException();
+    return serverIssue.type();
   }
 
   @Override
