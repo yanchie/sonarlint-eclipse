@@ -194,8 +194,8 @@
   <repositories>
     <repository>
       <id>sonarlint-eclipse</id>
-      <url>${sonarlint-eclipse.p2.url}</url>
       <layout>p2</layout>
+      <url>${sonarlint-eclipse.p2.url}</url>
     </repository>
   </repositories>
 </project>

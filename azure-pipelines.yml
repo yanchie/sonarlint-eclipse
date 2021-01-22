@@ -205,16 +205,6 @@ stages:
       - template: update-maven-version-steps.yml
         parameters:
           mavenSettingsFilePath: $(mavenSettings.secureFilePath)
-      - task: Maven@3
-        displayName: ' Download staged update site'
-        env:
-          ARTIFACTORY_QA_READER_USERNAME: $(ARTIFACTORY_QA_READER_USERNAME)
-          ARTIFACTORY_QA_READER_PASSWORD: $(ARTIFACTORY_QA_READER_PASSWORD)
-        inputs:
-          goals: 'dependency:unpack'
-          options: '-B --settings $(mavenSettings.secureFilePath) -Denable-repo=qa -Dtycho.mode=maven -Dartifact=org.sonarsource.sonarlint.eclipse:org.sonarlint.eclipse.site:$(PROJECT_VERSION):zip -DoutputDirectory=$(Agent.BuildDirectory)/staged-repository'
-          publishJUnitResults: false
-          mavenOptions: $(MAVEN_OPTS)
       - bash: |
           set -e
           sudo apt-get update
@@ -245,9 +235,13 @@ stages:
           options: >-
             -B -e
             --settings $(mavenSettings.secureFilePath)
+            -Denable-repo=qa
             -Pcoverage
-            -Dtarget.platform=$(TARGET_PLATFORM) -Dtycho.localArtifacts=ignore -Dsonarlint-eclipse.p2.url=$(stagedP2Url) -Dsonar.runtimeVersion=$(SQ_VERSION)
-            -Djacoco.append=true -Djacoco.destFile=$(Agent.BuildDirectory)/it-coverage.exec
+            -Dtarget.platform=$(TARGET_PLATFORM)
+            -Dsonar.runtimeVersion=$(SQ_VERSION)
+            -Dsonarlint-eclipse.p2.url=mvn:org.sonarsource.sonarlint.eclipse:org.sonarlint.eclipse.site:$(PROJECT_VERSION):zip
+            -Djacoco.append=true
+            -Djacoco.destFile=$(Agent.BuildDirectory)/it-coverage.exec
             $(Category)
           publishJUnitResults: true
           testResultsFiles: '**/surefire-reports/TEST-*.xml'
