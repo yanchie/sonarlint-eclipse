@@ -55,7 +55,7 @@
     <license.title>SonarLint for Eclipse</license.title>
     <license.mailto>sonarlint@sonarsource.com</license.mailto>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <tycho.version>2.0.0</tycho.version>
+    <tycho.version>2.2.0</tycho.version>
     <tycho-extras.version>${tycho.version}</tycho-extras.version>
     <target.platform>2020-09</target.platform>
     <sonarlint-core.version>4.15.0.24749</sonarlint-core.version>
@@ -257,19 +257,10 @@
               <goal>plugin-source</goal>
             </goals>
           </execution>
-        </executions>
-      </plugin>
-
-      <plugin>
-        <groupId>org.eclipse.tycho.extras</groupId>
-        <artifactId>tycho-source-feature-plugin</artifactId>
-        <version>${tycho-extras.version}</version>
-        <executions>
           <execution>
-            <id>source-feature</id>
-            <phase>package</phase>
+            <id>feature-source</id>
             <goals>
-              <goal>source-feature</goal>
+              <goal>feature-source</goal>
             </goals>
             <configuration>
               <excludes>
@@ -287,7 +278,6 @@
           </execution>
         </executions>
       </plugin>
-      
       <!-- Keep sign after source-feature to ensure source feature is signed as well -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
