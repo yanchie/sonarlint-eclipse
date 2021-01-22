@@ -37,10 +37,7 @@ stages:
       - task: Cache@2
         displayName: Cache Maven local repo
         inputs:
-          key: 'maven | "$(Agent.OS)" | **/pom.xml'
-          restoreKeys: |
-            maven | "$(Agent.OS)"
-            maven
+          key: 'build | maven | "$(Agent.OS)" | **/pom.xml,**/*.target,!**/its/**'
           path: $(MAVEN_CACHE_FOLDER)
       - task: DownloadSecureFile@1
         displayName: 'Download Maven settings'
@@ -111,10 +108,7 @@ stages:
       - task: Cache@2
         displayName: Cache Maven local repo
         inputs:
-          key: 'maven | "$(Agent.OS)" | **/pom.xml'
-          restoreKeys: |
-            maven | "$(Agent.OS)"
-            maven
+          key: 'validate | maven | "$(Agent.OS)" | **/pom.xml,**/*.target,!**/its/**'
           path: $(MAVEN_CACHE_FOLDER)
       - task: DownloadSecureFile@1
         displayName: 'Download Maven settings'
@@ -192,10 +186,7 @@ stages:
       - task: Cache@2
         displayName: Cache Maven local repo
         inputs:
-          key: 'maven | "$(Agent.OS)" | **/pom.xml,!**/target/**'
-          restoreKeys: |
-            maven | "$(Agent.OS)"
-            maven
+          key: '"$(TARGET_PLATFORM)" | maven | "$(Agent.OS)" | **/its/**/pom.xml,**/its/**/*.target,!**/target/**'
           path: $(MAVEN_CACHE_FOLDER)
       - task: DownloadSecureFile@1
         displayName: 'Download Maven settings'
@@ -281,10 +272,7 @@ stages:
       - task: Cache@2
         displayName: Cache Maven local repo
         inputs:
-          key: 'maven | "$(Agent.OS)" | **/pom.xml'
-          restoreKeys: |
-            maven | "$(Agent.OS)"
-            maven
+          key: 'sq | maven | "$(Agent.OS)" | **/pom.xml,**/*.target,!**/its/**'
           path: $(MAVEN_CACHE_FOLDER)
       - task: DownloadSecureFile@1
         displayName: 'Download Maven settings'
