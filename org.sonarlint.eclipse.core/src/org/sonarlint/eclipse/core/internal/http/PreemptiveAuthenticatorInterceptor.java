@@ -1,7 +1,7 @@
 /*
- * SonarLint Core - ITs - Tests
- * Copyright (C) 2016-2021 SonarSource SA
- * mailto:info AT sonarsource DOT com
+ * SonarLint for Eclipse
+ * Copyright (C) 2015-2020 SonarSource SA
+ * sonarlint@sonarsource.com
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public

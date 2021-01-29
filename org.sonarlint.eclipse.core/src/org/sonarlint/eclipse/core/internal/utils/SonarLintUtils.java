@@ -22,13 +22,15 @@ package org.sonarlint.eclipse.core.internal.utils;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.Proxy;
+import java.net.Proxy.Type;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.Set;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
+import okhttp3.Credentials;
+import okhttp3.OkHttpClient;
+import okhttp3.OkHttpClient.Builder;
 import org.eclipse.core.net.proxy.IProxyData;
 import org.eclipse.core.net.proxy.IProxyService;
 import org.eclipse.core.resources.IResource;
@@ -37,7 +39,11 @@ import org.sonarlint.eclipse.core.internal.SonarLintCorePlugin;
 import org.sonarlint.eclipse.core.internal.extension.SonarLintExtensionTracker;
 import org.sonarsource.sonarlint.core.client.api.common.Language;
 
+import static org.sonarlint.eclipse.core.internal.utils.StringUtils.defaultString;
+
 public class SonarLintUtils {
+
+  private static final String PROXY_AUTHORIZATION = "Proxy-Authorization";
 
   private SonarLintUtils() {
     // utility class, forbidden constructor
@@ -59,7 +65,8 @@ public class SonarLintUtils {
     return SonarLintCorePlugin.getInstance().getBundle().getVersion().toString();
   }
 
-  public static void configureProxy(String url, Consumer<Proxy> proxyConsumer, BiConsumer<String, String> credentialsConsumer) {
+  public static OkHttpClient.Builder withProxy(String url, OkHttpClient baseClient) {
+    Builder newBuilder = baseClient.newBuilder();
     IProxyService proxyService = SonarLintCorePlugin.getInstance().getProxyService();
     IProxyData[] proxyDataForHost;
     try {
@@ -67,16 +74,27 @@ public class SonarLintUtils {
     } catch (MalformedURLException | URISyntaxException e) {
       throw new IllegalStateException("Invalid URL for server: " + url, e);
     }
-
-    for (IProxyData data : proxyDataForHost) {
-      if (data.getHost() != null) {
-        proxyConsumer.accept(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(data.getHost(), data.getPort())));
-        if (data.isRequiresAuthentication()) {
-          credentialsConsumer.accept(data.getUserId(), data.getPassword());
+    if (proxyDataForHost.length > 0) {
+      IProxyData proxyData = proxyDataForHost[0];
+      if (proxyData.getHost() != null) {
+        Type proxyType = IProxyData.SOCKS_PROXY_TYPE.equals(proxyData.getType()) ? Proxy.Type.SOCKS : Proxy.Type.HTTP;
+        newBuilder.proxy(new Proxy(proxyType, new InetSocketAddress(proxyData.getHost(), proxyData.getPort())));
+        if (proxyData.isRequiresAuthentication()) {
+          newBuilder.proxyAuthenticator((route, response) -> {
+            if (response.request().header(PROXY_AUTHORIZATION) != null) {
+              // Give up, we've already attempted to authenticate.
+              return null;
+            }
+            String proxyCrendentials = Credentials.basic(defaultString(proxyData.getUserId(), ""), defaultString(proxyData.getPassword(), ""));
+            return response.request().newBuilder()
+              .header(PROXY_AUTHORIZATION, proxyCrendentials)
+              .build();
+          });
         }
-        break;
       }
     }
+
+    return newBuilder;
   }
 
   public static Set<Language> getEnabledLanguages() {

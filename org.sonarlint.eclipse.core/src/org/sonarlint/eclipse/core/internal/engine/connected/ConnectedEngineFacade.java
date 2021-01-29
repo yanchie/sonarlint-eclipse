@@ -33,6 +33,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import okhttp3.Credentials;
+import okhttp3.OkHttpClient;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
@@ -45,6 +47,8 @@ import org.sonarlint.eclipse.core.internal.SonarLintCorePlugin;
 import org.sonarlint.eclipse.core.internal.StoragePathManager;
 import org.sonarlint.eclipse.core.internal.engine.AnalysisRequirementNotifications;
 import org.sonarlint.eclipse.core.internal.engine.SkippedPluginsNotifier;
+import org.sonarlint.eclipse.core.internal.http.PreemptiveAuthenticatorInterceptor;
+import org.sonarlint.eclipse.core.internal.http.SonarLintHttpClientOkHttpImpl;
 import org.sonarlint.eclipse.core.internal.jobs.SonarLintAnalyzerLogOutput;
 import org.sonarlint.eclipse.core.internal.jobs.WrappedProgressMonitor;
 import org.sonarlint.eclipse.core.internal.preferences.SonarLintProjectConfiguration;
@@ -69,8 +73,6 @@ import org.sonarsource.sonarlint.core.client.api.connected.GlobalStorageStatus;
 import org.sonarsource.sonarlint.core.client.api.connected.ProjectBinding;
 import org.sonarsource.sonarlint.core.client.api.connected.RemoteOrganization;
 import org.sonarsource.sonarlint.core.client.api.connected.RemoteProject;
-import org.sonarsource.sonarlint.core.client.api.connected.ConnectionConfiguration;
-import org.sonarsource.sonarlint.core.client.api.connected.ConnectionConfiguration.Builder;
 import org.sonarsource.sonarlint.core.client.api.connected.ServerIssue;
 import org.sonarsource.sonarlint.core.client.api.connected.SonarAnalyzer;
 import org.sonarsource.sonarlint.core.client.api.connected.StateListener;
@@ -79,6 +81,8 @@ import org.sonarsource.sonarlint.core.client.api.connected.ValidationResult;
 import org.sonarsource.sonarlint.core.client.api.connected.WsHelper;
 import org.sonarsource.sonarlint.core.client.api.exceptions.DownloadException;
 import org.sonarsource.sonarlint.core.client.api.util.TextSearchIndex;
+import org.sonarsource.sonarlint.core.http.ConnectedModeEndpoint;
+import org.sonarsource.sonarlint.core.http.SonarLintHttpClient;
 import org.sonarsource.sonarlint.core.notifications.ServerNotificationsRegistry;
 
 import static java.util.Collections.emptyList;
@@ -226,7 +230,7 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
       SubMonitor subMonitor = SubMonitor.convert(progress, getBoundProjects().size() + 1);
       SubMonitor globalMonitor = subMonitor.newChild(1);
       SonarLintLogger.get().info("Check for updates from server '" + getId() + "'");
-      withEngine(engine -> engine.checkIfGlobalStorageNeedUpdate(getConfig(),
+      withEngine(engine -> engine.checkIfGlobalStorageNeedUpdate(createEndpoint(), buildClientWithProxyAndCredentials(),
         new WrappedProgressMonitor(globalMonitor, "Check for configuration updates on server '" + getId() + "'"))).ifPresent(checkForUpdateResult -> {
           if (checkForUpdateResult.needUpdate()) {
             this.hasUpdates = true;
@@ -250,7 +254,7 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
           return;
         }
         SonarLintLogger.get().info("Check for binding data updates on '" + getId() + "' for project '" + projectKey + "'");
-        withEngine(engine -> engine.checkIfProjectStorageNeedUpdate(getConfig(), projectKey,
+        withEngine(engine -> engine.checkIfProjectStorageNeedUpdate(createEndpoint(), buildClientWithProxyAndCredentials(), projectKey,
           new WrappedProgressMonitor(projectMonitor, "Checking for binding data update for project '" + projectKey + "'"))).ifPresent(projectUpdateCheckResult -> {
             if (projectUpdateCheckResult.needUpdate()) {
               this.hasUpdates = true;
@@ -377,7 +381,8 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
   @Override
   public void updateStorage(IProgressMonitor monitor) {
     doWithEngine(engine -> {
-      UpdateResult updateResult = engine.update(getConfig(), new WrappedProgressMonitor(monitor, "Update configuration from server '" + getId() + "'"));
+      UpdateResult updateResult = engine.update(createEndpoint(), buildClientWithProxyAndCredentials(),
+        new WrappedProgressMonitor(monitor, "Update configuration from server '" + getId() + "'"));
       Collection<SonarAnalyzer> tooOld = updateResult.analyzers().stream()
         .filter(SonarAnalyzer::sonarlintCompatible)
         .filter(ConnectedEngineFacade::tooOld)
@@ -410,7 +415,8 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
   @Override
   public void updateProjectList(IProgressMonitor monitor) {
     doWithEngine(engine -> {
-      engine.downloadAllProjects(getConfig(), new WrappedProgressMonitor(monitor, "Download project list from server '" + getId() + "'"));
+      engine.downloadAllProjects(createEndpoint(), buildClientWithProxyAndCredentials(),
+        new WrappedProgressMonitor(monitor, "Download project list from server '" + getId() + "'"));
       reloadProjects(engine);
     });
   }
@@ -458,7 +464,7 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
   @Override
   public void updateProjectStorage(String projectKey, IProgressMonitor monitor) {
     doWithEngine(engine -> {
-      engine.updateProject(getConfig(), projectKey,
+      engine.updateProject(createEndpoint(), buildClientWithProxyAndCredentials(), projectKey,
         new WrappedProgressMonitor(monitor, "Update configuration from server '" + getId() + "' for project '" + projectKey + "'"));
       getBoundProjects(projectKey).forEach(p -> {
         ProjectBinding projectBinding = engine.calculatePathPrefixes(projectKey, p.files().stream().map(ISonarLintFile::getProjectRelativePath).collect(toList()));
@@ -476,12 +482,9 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
 
   public static IStatus testConnection(String url, @Nullable String organization, @Nullable String username, @Nullable String password) {
     try {
-      Builder builder = getConfigBuilderNoCredentials(url, organization);
-      if (StringUtils.isNotBlank(username) || StringUtils.isNotBlank(password)) {
-        builder.credentials(username, password);
-      }
-      WsHelper helper = new WsHelperImpl();
-      ValidationResult testConnection = helper.validateConnection(builder.build());
+      OkHttpClient.Builder withProxy = buildOkHttpClientWithProxyAndCredentials(url, username, password);
+      WsHelper helper = new WsHelperImpl(new SonarLintHttpClientOkHttpImpl(withProxy.build()));
+      ValidationResult testConnection = helper.validateConnection(createEndpoint(url, organization));
       if (testConnection.success()) {
         return new Status(IStatus.OK, SonarLintCorePlugin.PLUGIN_ID, "Successfully connected!");
       } else {
@@ -497,44 +500,65 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
   }
 
   public static List<RemoteOrganization> listUserOrganizations(String url, String username, String password, IProgressMonitor monitor) {
-    Builder builder = getConfigBuilderNoCredentials(url, null);
-    if (StringUtils.isNotBlank(username) || StringUtils.isNotBlank(password)) {
-      builder.credentials(username, password);
-    }
-    WsHelper helper = new WsHelperImpl();
-    return helper.listUserOrganizations(builder.build(), new WrappedProgressMonitor(monitor, "Fetch organizations"));
+    OkHttpClient.Builder withProxy = buildOkHttpClientWithProxyAndCredentials(url, username, password);
+    WsHelper helper = new WsHelperImpl(new SonarLintHttpClientOkHttpImpl(withProxy.build()));
+    return helper.listUserOrganizations(createEndpoint(url, null), new WrappedProgressMonitor(monitor, "Fetch organizations"));
   }
 
-  public ConnectionConfiguration getConfig() {
-    Builder builder = getConfigBuilderNoCredentials(getHost(), getOrganization());
-
+  public SonarLintHttpClient buildClientWithProxyAndCredentials() {
+    OkHttpClient.Builder withProxy = SonarLintUtils.withProxy(getHost(), SonarLintCorePlugin.getOkHttpClient());
     if (hasAuth()) {
+      @Nullable
+      String username;
+      @Nullable
+      String password;
       try {
-        builder.credentials(ConnectedEngineFacadeManager.getUsername(this), ConnectedEngineFacadeManager.getPassword(this));
+        username = ConnectedEngineFacadeManager.getUsername(this);
+        password = ConnectedEngineFacadeManager.getPassword(this);
       } catch (StorageException e) {
         throw new IllegalStateException("Unable to read server credentials from storage: " + e.getMessage(), e);
       }
+      withProxy.addNetworkInterceptor(new PreemptiveAuthenticatorInterceptor(credentials(username, password)));
     }
-    return builder.build();
-  }
-
-  private static Builder getConfigBuilderNoCredentials(String url, @Nullable String organization) {
-    Builder builder = ConnectionConfiguration.builder()
-      .url(url)
-      .organizationKey(organization)
-      .userAgent("SonarLint Eclipse " + SonarLintUtils.getPluginVersion());
-
-    SonarLintUtils.configureProxy(url, builder::proxy, builder::proxyCredentials);
-    return builder;
+    return new SonarLintHttpClientOkHttpImpl(withProxy.build());
   }
 
   public static boolean checkNotificationsSupported(String url, @Nullable String organization, String username, String password) {
-    Builder builder = ConnectedEngineFacade.getConfigBuilderNoCredentials(url, organization);
-    if (StringUtils.isNotBlank(username) || StringUtils.isNotBlank(password)) {
-      builder.credentials(username, password);
-    }
+    OkHttpClient.Builder withProxy = buildOkHttpClientWithProxyAndCredentials(url, username, password);
 
-    return ServerNotificationsRegistry.get().isSupported(builder.build());
+    return ServerNotificationsRegistry.isSupported(createEndpoint(url, organization), new SonarLintHttpClientOkHttpImpl(withProxy.build()));
+  }
+
+  private static ConnectedModeEndpoint createEndpoint(String url, @Nullable String organization) {
+    return new ConnectedModeEndpoint() {
+
+      @Override
+      public boolean isSonarCloud() {
+        return getSonarCloudUrl().equals(url);
+      }
+
+      @Override
+      public String getOrganization() {
+        return organization;
+      }
+
+      @Override
+      public String getBaseUrl() {
+        return url;
+      }
+    };
+  }
+
+  private static OkHttpClient.Builder buildOkHttpClientWithProxyAndCredentials(String url, @Nullable String username, @Nullable String password) {
+    OkHttpClient.Builder withProxy = SonarLintUtils.withProxy(url, SonarLintCorePlugin.getOkHttpClient());
+    if (StringUtils.isNotBlank(username) || StringUtils.isNotBlank(password)) {
+      withProxy.addNetworkInterceptor(new PreemptiveAuthenticatorInterceptor(credentials(username, password)));
+    }
+    return withProxy;
+  }
+
+  private static String credentials(@Nullable String username, @Nullable String password) {
+    return Credentials.basic(StringUtils.defaultString(username, ""), StringUtils.defaultString(password, ""));
   }
 
   public boolean checkNotificationsSupported() {
@@ -542,12 +566,16 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
       return true;
     }
     try {
-      return ServerNotificationsRegistry.get().isSupported(getConfig());
+      return ServerNotificationsRegistry.isSupported(createEndpoint(), buildClientWithProxyAndCredentials());
     } catch (Exception e) {
       // Maybe the server is temporarily unavailable
       SonarLintLogger.get().debug("Unable to check for if notifications are supported for server '" + getHost() + "'", e);
       return false;
     }
+  }
+
+  public ConnectedModeEndpoint createEndpoint() {
+    return createEndpoint(getHost(), getOrganization());
   }
 
   @Override
@@ -570,8 +598,8 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
     if (remoteProjectFromStorage != null) {
       return Optional.of(remoteProjectFromStorage);
     } else {
-      WsHelper helper = new WsHelperImpl();
-      Optional<RemoteProject> project = helper.getProject(getConfig(), projectKey, new WrappedProgressMonitor(monitor, "Fetch project name"));
+      WsHelper helper = new WsHelperImpl(buildClientWithProxyAndCredentials());
+      Optional<RemoteProject> project = helper.getProject(createEndpoint(), projectKey, new WrappedProgressMonitor(monitor, "Fetch project name"));
       if (project.isPresent()) {
         allProjectsByKey.put(projectKey, project.get());
       }
@@ -623,11 +651,13 @@ public class ConnectedEngineFacade implements IConnectedEngineFacade, StateListe
   }
 
   public void downloadServerIssues(String projectKey, IProgressMonitor monitor) {
-    doWithEngine(engine -> engine.downloadServerIssues(getConfig(), projectKey, new WrappedProgressMonitor(monitor, "Fetch issues")));
+    doWithEngine(engine -> engine.downloadServerIssues(createEndpoint(), buildClientWithProxyAndCredentials(), projectKey, new WrappedProgressMonitor(monitor, "Fetch issues")));
   }
 
   public List<ServerIssue> downloadServerIssues(ProjectBinding projectBinding, String filePath, IProgressMonitor monitor) {
-    return withEngine(engine -> engine.downloadServerIssues(getConfig(), projectBinding, filePath, new WrappedProgressMonitor(monitor, "Fetch issues"))).orElse(emptyList());
+    return withEngine(
+      engine -> engine.downloadServerIssues(createEndpoint(), buildClientWithProxyAndCredentials(), projectBinding, filePath, new WrappedProgressMonitor(monitor, "Fetch issues")))
+        .orElse(emptyList());
   }
 
   public List<ServerIssue> getServerIssues(ProjectBinding projectBinding, String filePath) {

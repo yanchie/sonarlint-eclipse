@@ -78,14 +78,15 @@ public class SonarLintCorePlugin extends Plugin {
   private NotificationsTrackerRegistry notificationsTrackerRegistry;
   private NodeJsManager nodeJsManager;
 
-  private final OkHttpClient okhttpClient = new OkHttpClient.Builder()
-    .addNetworkInterceptor(new UserAgentInterceptor("SonarLint Eclipse " + SonarLintUtils.getPluginVersion()))
-    .build();
+  private final OkHttpClient okhttpClient;
 
   public SonarLintCorePlugin() {
     plugin = this;
     proxyTracker = new ServiceTracker<>(FrameworkUtil.getBundle(this.getClass()).getBundleContext(), IProxyService.class, null);
     proxyTracker.open();
+    okhttpClient = new OkHttpClient.Builder()
+      .addNetworkInterceptor(new UserAgentInterceptor("SonarLint Eclipse " + SonarLintUtils.getPluginVersion()))
+      .build();
   }
 
   public static SonarLintCorePlugin getInstance() {
@@ -164,6 +165,9 @@ public class SonarLintCorePlugin extends Plugin {
     issueTrackerRegistry.shutdown();
     if (serversManager != null) {
       serversManager.stop();
+    }
+    if (notificationsManager != null) {
+      notificationsManager.stop();
     }
     SonarLintExtensionTracker.close();
 
